@@ -91,11 +91,8 @@ Script fails fast and loud when:
 - API calls return non-200s
 
 ## Known Issues
-
-1. `uv init` creates `master` branch because it's stuck in 2010. Script force-renames to `main`.
-2. Azure DevOps API is slow as molasses. Be patient.
-3. GitHub rate limits will kick your ass if you spam requests.
-4. This cannot be ran from inside a Git Repository. You will get workspace errors from uv.
+1. This cannot be ran from inside a Git Repository. You will get workspace errors from uv.
+2. Only works with 'main' as the primary branch during setup. Other names cannot (yet) be chosen.
 
 ## Contributing
 
