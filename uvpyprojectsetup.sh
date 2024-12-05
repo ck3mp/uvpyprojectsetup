@@ -13,12 +13,14 @@ readonly REQUIRED_TOOLS=("curl" "jq" "uv" "git")
 # ================================================================================
 # CONFIGURATION
 # ================================================================================
-declare -A config=(
-    [platform]="devops"
-    [github_mode]="personal"
-    [project_name]=""
-    [autocommit]=""
-)
+platform="devops"
+github_mode="personal"
+project_name=""
+autocommit=""
+org_url=""
+project_id=""
+org_name=""
+
 
 # ================================================================================
 # HELP AND DOCUMENTATION
@@ -30,22 +32,22 @@ Usage: $(basename "$0") [--devops|--github-personal|--github-org] [options]
 Platform (pick one):
     --devops               Use Azure DevOps (default)
     --github-personal      Use GitHub Personal
-    --github-org          Use GitHub Organisation
+    --github-org           Use GitHub Organisation
 
 Required:
-    --project-name        Project name (lowercase || die)
+    --project-name         Project name (lowercase || die)
 
 DevOps options:
-    --org-url            DevOps org URL or set AZURE_REPOCREATE_ORG_URL
-    --project-id         DevOps project ID or set AZURE_REPOCREATE_PROJECT_ID
+    --org-url              DevOps org URL or set AZURE_REPOCREATE_ORG_URL
+    --project-id           DevOps project ID or set AZURE_REPOCREATE_PROJECT_ID
 
 GitHub Org options:
-    --org                GitHub org name or set GITHUB_REPOCREATE_ORG
+    --org                  GitHub org name or set GITHUB_REPOCREATE_ORG
 
 Optional:
-    --autocommit         YOLO push to main after setup
-    -v, --version        Show version
-    -h, --help          Show this help
+    --autocommit           YOLO push to main after setup
+    -v, --version          Show version
+    -h, --help             Show this help
 EOF
 }
 
@@ -149,20 +151,20 @@ check_repo_exists() {
     local response
     local url
     
-    case "${config[platform]}" in
+    case "$platform" in
         devops)
-            url="${config[org_url]}/_apis/git/repositories/${project_name}?api-version=6.0"
+            url="${org_url}/_apis/git/repositories/${project_name}?api-version=6.0"
             ;;
         github)
-            if [[ "${config[github_mode]}" == "org" ]]; then
-                url="https://api.github.com/repos/${config[org_name]}/${project_name}"
+            if [[ "$github_mode" == "org" ]]; then
+                url="https://api.github.com/repos/${org_name}/${project_name}"
             else
                 url="https://api.github.com/repos/${project_name}"
             fi
             ;;
     esac
     
-    response=$(make_api_call "GET" "$url" "" "${config[platform]}")
+    response=$(make_api_call "GET" "$url" "" "$platform")
     
     if jq -e '.id' <<< "$response" >/dev/null 2>&1; then
         die "Repo '$project_name' already exists. Pick something else."
@@ -188,32 +190,35 @@ validate_project_name() {
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case $1 in
-            --devops|--github-personal|--github-org)
-                config[platform]=${1#--}
-                [[ ${1#--} == github-* ]] && config[platform]="github" && config[github_mode]=${1#--github-}
+            --devops)
+                platform="devops"
+                ;;
+            --github-personal|--github-org)
+                platform="github"
+                github_mode=${1#--github-}
                 ;;
             --project-name)
                 [[ -z "${2:-}" ]] && die "Missing project name"
-                config[project_name]="$2"
+                project_name="$2"
                 shift
                 ;;
             --org-url)
                 [[ -z "${2:-}" ]] && die "Missing org URL"
-                config[org_url]="$2"
+                org_url="$2"
                 shift
                 ;;
             --project-id)
                 [[ -z "${2:-}" ]] && die "Missing project ID"
-                config[project_id]="$2"
+                project_id="$2"
                 shift
                 ;;
             --org)
                 [[ -z "${2:-}" ]] && die "Missing org name"
-                config[org_name]="$2"
+                org_name="$2"
                 shift
                 ;;
             --autocommit)
-                config[autocommit]=1
+                autocommit=1
                 ;;
             -v|--version)
                 echo "$VERSION"
@@ -230,62 +235,57 @@ parse_args() {
         shift
     done
 }
-
 # ================================================================================
 # MAIN EXECUTION
 # ================================================================================
 main() {
     parse_args "$@"
     
-    for tool in "${REQUIRED_TOOLS[@]}"; do
+    for tool in $REQUIRED_TOOLS; do
         command -v "$tool" >/dev/null 2>&1 || die "Missing required tool: $tool"
     done
 
-    validate_token "${config[platform]}"
-    validate_project_name "${config[project_name]}"
-    check_repo_exists "${config[project_name]}"
+    validate_token "$platform"
+    validate_project_name "$project_name"
+    check_repo_exists "$project_name"
 
     local repo_data response ssh_url web_url
 
-    case "${config[platform]}" in
+    case "$platform" in
         devops)
-            repo_data="{\"name\": \"${config[project_name]}\", \"project\": {\"id\": \"${config[project_id]}\"}}"
-            response=$(make_api_call "POST" "${config[org_url]}/_apis/git/repositories?api-version=6.0" "$repo_data" "devops")
-            ssh_url=$(jq -r '.sshUrl' <<< "$response")
-            web_url=$(jq -r '.webUrl' <<< "$response")
+            repo_data="{\"name\": \"${project_name}\", \"project\": {\"id\": \"${project_id}\"}}"
+            response=$(make_api_call "POST" "${org_url}/_apis/git/repositories?api-version=6.0" "$repo_data" "devops")
             ;;
         github)
-            repo_data="{\"name\":\"${config[project_name]}\", \"private\":true}"
-            if [[ "${config[github_mode]}" == "org" ]]; then
-                response=$(make_api_call "POST" "https://api.github.com/orgs/${config[org_name]}/repos" "$repo_data" "github")
+            repo_data="{\"name\":\"${project_name}\", \"private\":true}"
+            if [[ "$github_mode" == "org" ]]; then
+                response=$(make_api_call "POST" "https://api.github.com/orgs/${org_name}/repos" "$repo_data" "github")
             else
                 response=$(make_api_call "POST" "https://api.github.com/user/repos" "$repo_data" "github")
             fi
-            ssh_url=$(jq -r '.ssh_url' <<< "$response")
-            web_url=$(jq -r '.html_url' <<< "$response")
             ;;
     esac
+
+    ssh_url=$(jq -r '.sshUrl // .ssh_url' <<< "$response")
+    web_url=$(jq -r '.webUrl // .html_url' <<< "$response")
     
     [[ "$ssh_url" == "null" || "$web_url" == "null" ]] && die "Failed to extract repo URLs"
     
-    if ! uv init "${config[project_name]}"; then
+    if ! uv init "$project_name"; then
         die "uv init failed"
     fi
     
-    cd "${config[project_name]}" || die "Failed to cd into project directory"
-    
-    # Force default branch to main because uv init is stuck in 2010
+    cd "$project_name" || die "Failed to cd into project directory"
     git branch -M main || die "Failed to rename branch to main"
-    
     git remote add origin "$ssh_url" || die "Failed to add git remote"
     
-    if [[ -n "${config[autocommit]}" ]]; then
+    if [[ -n "$autocommit" ]]; then
         git add . || die "Git add failed"
         git commit -m "Initial commit: Project setup with uv" || die "Git commit failed"
         git push -u origin main || die "Git push failed"
     fi
     
-    log "INFO" "🎉 ${config[project_name]} setup complete!"
+    log "INFO" "🎉 ${project_name} setup complete!"
     log "INFO" "🔗 SSH URL: $ssh_url"
     log "INFO" "🌐 Web URL: $web_url"
 }
