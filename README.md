@@ -1,6 +1,6 @@
 # Repository Creation & Project Setup Script
 
-A battle-tested script for automating repo creation and project setup across Azure DevOps and GitHub. Handles all the tedious bullshit of setting up new Python projects with proper git initialization.
+A script for automating repo creation and project setup across Azure DevOps and GitHub. Handles all the tedious bullshit of setting up new Python projects with proper git initialization.
 
 ## Prerequisites
 
@@ -45,6 +45,7 @@ Don't even try using expired or malformed tokens. Script will tell you to GTFO.
 ```
 
 Skip `--org-url` by setting `AZURE_REPOCREATE_ORG_URL`
+
 Skip `--project-id` by setting `AZURE_REPOCREATE_PROJECT_ID`
 
 #### GitHub Personal
